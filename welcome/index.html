@@ -1,0 +1,1279 @@
+<script>
+  const cut = 1;
+  const adjustCfc = 0.42;
+  const CONFIG = (() => {
+    const params = new URLSearchParams(window.location.search);
+
+    const DEFAULTS = {
+      lang: "nl",
+      brand: "hollandcasino",
+      offerBase: "https://hhbonus8.com/1n18g6v",
+      i18nUrl: "https://alphaclick.click/system/i18n.json?v=1",
+      sendTo: "AW-18126544216/9a0ACNjVmvIcENi6tMND",
+      b1: "Bonus 4000 €",
+      b2: "100 GS"
+    };
+
+    const LANDING_CONFIG_PARAMS = new Set([
+      "lang",
+      "brand",
+      "b1",
+      "b2",
+      "send_to",
+      "tg",
+      "offer",
+    ]);
+
+    function getParam(name, fallback = "") {
+      const value = params.get(name);
+      if (value === null) return fallback;
+      const trimmed = value.trim();
+      return trimmed === "" ? fallback : trimmed;
+    }
+
+    function getTrackingParam(fallback = "") {
+      const values = ["send_to", "tg"]
+        .flatMap((name) => params.getAll(name))
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      return values.length ? values.join(",") : fallback;
+    }
+
+    function parseTrackingTargets(raw) {
+      return raw
+        .split(/[,\s;|]+/)
+        .map((value) => value.trim())
+        .filter((value) => value && value !== "#");
+    }
+
+    function splitBonusParam(raw, fallbackLeft = "", fallbackRight = "") {
+      if (!raw || !raw.trim()) {
+        return {
+          top: fallbackLeft,
+          bottom: fallbackRight,
+        };
+      }
+
+      const normalized = raw.trim().replace(/\+/g, " ");
+      const parts = normalized.split(/\s+/).filter(Boolean);
+
+      return {
+        top: parts[0] ?? fallbackLeft,
+        bottom: parts.slice(1).join(" ") || fallbackRight,
+      };
+    }
+
+    function getBonusFallbackParts(raw) {
+      const normalized = raw.trim().split(/\s+/).filter(Boolean);
+
+      return {
+        top: normalized[0] ?? "",
+        bottom: normalized.slice(1).join(" "),
+      };
+    }
+
+    function buildOfferUrl(baseUrl) {
+      let result = baseUrl + "?&";
+      result += "se_referrer=" + encodeURIComponent(document.referrer);
+      result += "&default_keyword=" + encodeURIComponent(document.title);
+
+      for (const [key, value] of params.entries()) {
+        if (LANDING_CONFIG_PARAMS.has(key)) {
+          continue;
+        }
+
+        result +=
+          "&" + encodeURIComponent(key) + "=" + encodeURIComponent(value);
+      }
+
+      return result;
+    }
+
+    const lang = getParam("lang", DEFAULTS.lang);
+    const brand = getParam("brand", DEFAULTS.brand);
+    const offerBase = getParam("offer", DEFAULTS.offerBase);
+    const sendTo = getTrackingParam(DEFAULTS.sendTo);
+    const trackingTargets = parseTrackingTargets(sendTo);
+
+    const bonus1Raw = getParam("b1", DEFAULTS.b1);
+    const bonus2Raw = getParam("b2", DEFAULTS.b2);
+
+    const defaultBonus1 = getBonusFallbackParts(DEFAULTS.b1);
+    const defaultBonus2 = getBonusFallbackParts(DEFAULTS.b2);
+
+    const bonus1 = splitBonusParam(
+      bonus1Raw,
+      defaultBonus1.top,
+      defaultBonus1.bottom,
+    );
+    const bonus2 = splitBonusParam(
+      bonus2Raw,
+      defaultBonus2.top,
+      defaultBonus2.bottom,
+    );
+
+    return {
+      params,
+      defaults: DEFAULTS,
+      landingConfigParams: LANDING_CONFIG_PARAMS,
+      lang,
+      brand,
+      offerBase,
+      offerURI: buildOfferUrl(offerBase),
+      sendTo,
+      trackingTargets,
+      i18nUrl: DEFAULTS.i18nUrl,
+      bonuses: {
+        first: bonus1,
+        second: bonus2,
+      },
+      assets: {
+        bg: `https://alphaclick.click/brands/${brand}/bg.avif`,
+        bgFallback: "https://alphaclick.click/brands/default/bg.avif",
+        logo: `https://alphaclick.click/brands/${brand}/logo.svg`,
+        holder: "https://alphaclick.click/wheel/steel-wheel-holder.avif",
+        trigger: "https://alphaclick.click/wheel/trigger.avif",
+        frame: "https://alphaclick.click/wheel/wheel-win-frame.avif",
+        modalBg: "https://alphaclick.click/wheel/bg-modal.avif",
+        mask: "https://alphaclick.click/wheel/wheel-mask.avif",
+      },
+    };
+  })();
+
+  async function loadI18n() {
+    const res = await fetch(CONFIG.i18nUrl, { cache: "force-cache" });
+    const allMessages = await res.json();
+    return allMessages[CONFIG.lang] || allMessages.en || allMessages.de;
+  }
+
+  function getTextFitTargets(element) {
+    const paragraphs = Array.from(element.querySelectorAll("p"));
+    if (paragraphs.length) return paragraphs;
+
+    let fitTarget = element.querySelector(":scope > .fit-text");
+    if (!fitTarget) {
+      const text = element.textContent.trim();
+      if (!text) return [];
+
+      fitTarget = document.createElement("span");
+      fitTarget.className = "fit-text";
+      fitTarget.textContent = text;
+      fitTarget.style.display = "inline-block";
+
+      element.textContent = "";
+      element.appendChild(fitTarget);
+    }
+
+    return [fitTarget];
+  }
+
+  function resetFontSize(element) {
+    const targets = getTextFitTargets(element);
+    targets.forEach((target) => {
+      target.style.fontSize = "";
+      target.style.transform = "";
+      target.style.transformOrigin = "";
+    });
+  }
+
+  function getMeasuredTextWidth(element) {
+    return element.scrollWidth || element.offsetWidth;
+  }
+
+  function adjustFontSizeToFit(element, c, options = {}) {
+    const targets = getTextFitTargets(element);
+    const baseWidth = element.offsetWidth;
+    const desiredWidth = baseWidth * c;
+    const maxRatio = options.maxRatio ?? (c < 0.5 ? 0.62 : c);
+    const maxWidth = baseWidth * maxRatio;
+    const minFontSize = options.minFontSize ?? 6;
+    const rawMaxFontSize =
+      options.maxFontSize ??
+      (options.maxFontSizeRatio ? baseWidth * options.maxFontSizeRatio : 100);
+    const maxFontSizeLimit = options.maxFontSizeLimit ?? rawMaxFontSize;
+    const maxFontSize = Math.max(
+      minFontSize,
+      Math.min(rawMaxFontSize, maxFontSizeLimit),
+    );
+    const step = options.step ?? 0.5;
+
+    if (!baseWidth || !desiredWidth || !maxWidth) return;
+
+    targets.forEach((target) => {
+      let fontSize = parseFloat(window.getComputedStyle(target).fontSize);
+      if (!fontSize) return;
+
+      target.style.whiteSpace = "nowrap";
+      if (fontSize > maxFontSize) {
+        fontSize = maxFontSize;
+        target.style.fontSize = `${fontSize}px`;
+      }
+
+      while (getMeasuredTextWidth(target) < desiredWidth && fontSize < maxFontSize) {
+        fontSize = Math.min(maxFontSize, fontSize + step);
+        target.style.fontSize = `${fontSize}px`;
+      }
+
+      while (getMeasuredTextWidth(target) > maxWidth && fontSize > minFontSize) {
+        fontSize = Math.max(minFontSize, fontSize - step);
+        target.style.fontSize = `${fontSize}px`;
+      }
+
+      const measuredWidth = getMeasuredTextWidth(target);
+      if (measuredWidth > maxWidth) {
+        target.style.transformOrigin = "center center";
+        target.style.transform = `scaleX(${maxWidth / measuredWidth})`;
+      }
+    });
+  }
+
+  function preloadImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+      img.src = url;
+    });
+  }
+
+  async function resolveBackgroundUrl() {
+    try {
+      await preloadImage(CONFIG.assets.bg);
+      return CONFIG.assets.bg;
+    } catch (error) {
+      return CONFIG.assets.bgFallback;
+    }
+  }
+
+  async function applyAssets() {
+    const section = document.querySelector("section.body");
+    const logo = document.querySelector(".logo img");
+    const wheel = document.querySelector(".wheel");
+    const start = document.querySelector(".start");
+    const frameImg = document.querySelector(".frame img");
+
+    if (section) {
+      const bgUrl = await resolveBackgroundUrl();
+      section.style.background = `url("${bgUrl}") no-repeat top left / cover`;
+    }
+
+    if (logo) {
+      logo.src = CONFIG.assets.logo;
+    }
+
+    if (wheel) {
+      wheel.style.background = `url("${CONFIG.assets.holder}") no-repeat top left / contain`;
+    }
+
+    if (start) {
+      start.style.background = `url("${CONFIG.assets.trigger}") no-repeat center / contain`;
+    }
+
+    if (frameImg) {
+      frameImg.src = CONFIG.assets.frame;
+    }
+
+    document.querySelectorAll(".popup-body").forEach((el) => {
+      el.style.background = `url("${CONFIG.assets.modalBg}") no-repeat center / cover`;
+    });
+
+    document.documentElement.style.setProperty(
+      "--wheel-mask-url",
+      `url("${CONFIG.assets.mask}")`,
+    );
+  }
+
+  function applyI18n(t) {
+    const wheelSegs = document.querySelectorAll(".wheel-seg");
+    const startBtnText = document.querySelector(".start p");
+    const offerTitle = document.querySelector(".offer h1");
+    const offerText = document.querySelector(".offer p");
+    const firstPopupTitle = document.querySelector("#first-popup .popup-title");
+    const secondPopupTitle = document.querySelector(
+      "#second-popup .popup-title",
+    );
+    const retryBtn = document.querySelector("#secsp");
+    const claimBtn = document.querySelector(
+      "#d25c38c9-c12e-670a-4afb-5b9f8d6045ee",
+    );
+
+    if (startBtnText) startBtnText.textContent = t.spin_button;
+    if (wheelSegs[0])
+      wheelSegs[0].querySelector(".wheel-small-text").textContent =
+        t.wheel_plus_spins;
+    if (wheelSegs[1])
+      wheelSegs[1].querySelector(".wheel-empty-text").textContent =
+        t.wheel_retry;
+    if (wheelSegs[3])
+      wheelSegs[3].querySelector(".wheel-empty-text").textContent =
+        t.wheel_empty;
+    if (wheelSegs[4])
+      wheelSegs[4].querySelector(".wheel-small-text").textContent =
+        t.wheel_plus_spins;
+    if (wheelSegs[5])
+      wheelSegs[5].querySelector(".wheel-empty-text").textContent =
+        t.wheel_retry;
+    if (wheelSegs[7])
+      wheelSegs[7].querySelector(".wheel-empty-text").textContent =
+        t.wheel_empty;
+
+    if (offerTitle) offerTitle.textContent = t.main_title;
+    if (offerText) {
+      offerText.innerHTML = `${t.attempts_label} <span id="counter">2</span>`;
+    }
+
+    if (firstPopupTitle) firstPopupTitle.textContent = t.popup_title;
+    if (secondPopupTitle) secondPopupTitle.textContent = t.popup_title;
+    if (retryBtn) retryBtn.textContent = t.popup_retry_button;
+    if (claimBtn) claimBtn.textContent = t.popup_claim_button;
+
+    document.title = t.meta_title || document.title;
+  }
+
+  function applyBonuses(t) {
+    const wheelSegs = document.querySelectorAll(".wheel-seg");
+    const b1 = CONFIG.bonuses.first;
+    const b2 = CONFIG.bonuses.second;
+    const bonus1Text = [b1.top, b1.bottom].filter(Boolean).join(" ");
+    const bonus2Text = [b2.top, b2.bottom].filter(Boolean).join(" ");
+
+    function setPopupText(selector, prefix, value) {
+      const popupText = document.querySelector(selector);
+      if (!popupText) return;
+
+      const prefixNode = popupText.querySelector(".popup-text-prefix");
+      const valueNode = popupText.querySelector(".popup-text-value");
+
+      if (prefixNode) {
+        prefixNode.textContent = prefix;
+        prefixNode.hidden = !prefix;
+      }
+
+      if (valueNode) {
+        valueNode.textContent = value;
+        valueNode.hidden = !value;
+      }
+    }
+
+    if (wheelSegs[2]) {
+      wheelSegs[2].querySelector(".wheel-big-text").textContent = b1.top;
+      wheelSegs[2].querySelector(".wheel-small-text").textContent = b1.bottom;
+    }
+
+    if (wheelSegs[6]) {
+      wheelSegs[6].querySelector(".wheel-big-text").textContent = b2.top;
+      wheelSegs[6].querySelector(".wheel-small-text").textContent = b2.bottom;
+    }
+
+    const cutedBonus = bonus1Text.split(" ").slice(cut).join(" ");
+    setPopupText(
+      "#first-popup .popup-text",
+      t.popup_win_prefix + " ",
+      cutedBonus,
+    );
+    setPopupText(
+      "#second-popup .popup-text",
+      [t.popup_win_prefix, cutedBonus].filter(Boolean).join(" "),
+      bonus2Text ? `+ ${bonus2Text}` : "",
+    );
+  }
+
+  async function fitTexts() {
+    await document.fonts.ready;
+
+    const startBtn = document.querySelector(".start");
+    const texts = document.querySelectorAll(".wheel-text-wrapper.adopt");
+    const popupButtons = document.querySelectorAll(".popup-btn.adopt");
+
+    if (startBtn) {
+      resetFontSize(startBtn);
+      adjustFontSizeToFit(startBtn, 0.7);
+    }
+
+    texts.forEach((el) => {
+      resetFontSize(el);
+      adjustFontSizeToFit(el, adjustCfc, {
+        maxRatio: adjustCfc,
+        minFontSize: 7,
+        maxFontSizeRatio: 0.28,
+        maxFontSizeLimit: 32,
+      });
+    });
+
+    popupButtons.forEach((el) => {
+      resetFontSize(el);
+      adjustFontSizeToFit(el, 0.2, { maxRatio: 0.62, minFontSize: 7 });
+    });
+  }
+
+  function initTracking() {
+    const accountIds = Array.from(
+      new Set(
+        CONFIG.trackingTargets
+          .map((sendTo) => sendTo.split("/")[0])
+          .filter(Boolean),
+      ),
+    );
+
+    if (!accountIds.length) {
+      return;
+    }
+
+    const src =
+      "https://www.googletagmanager.com/gtag/js?id=" +
+      encodeURIComponent(accountIds[0]);
+    const exists = Array.from(document.scripts).some(
+      (script) => script.src === src,
+    );
+    if (!exists) {
+      const script = document.createElement("script");
+      script.async = true;
+      script.src = src;
+      (document.head || document.documentElement).appendChild(script);
+    }
+
+    window.dataLayer = window.dataLayer || [];
+    window.gtag =
+      window.gtag ||
+      function () {
+        dataLayer.push(arguments);
+      };
+
+    gtag("js", new Date());
+    accountIds.forEach((accountId) => gtag("config", accountId));
+  }
+
+  function sendConversions() {
+    if (typeof gtag !== "function") {
+      return;
+    }
+
+    CONFIG.trackingTargets.forEach((sendTo) => {
+      gtag("event", "conversion", {
+        send_to: sendTo,
+        transport_type: "beacon",
+        event_timeout: 500,
+      });
+    });
+  }
+
+  async function initPage() {
+    initTracking();
+    const [t] = await Promise.all([loadI18n(), applyAssets()]);
+    applyI18n(t);
+    applyBonuses(t);
+    await fitTexts();
+  }
+</script>
+<style>
+  *,
+  ul {
+    margin: 0;
+    padding: 0;
+  }
+
+  * {
+    border: 0;
+  }
+
+  *,
+  :after,
+  :before {
+    box-sizing: border-box;
+  }
+
+  :active,
+  :focus,
+  a:active,
+  a:focus {
+    outline: 0;
+  }
+
+  aside,
+  footer,
+  header,
+  nav {
+    display: block;
+  }
+
+  section {
+    height: 100vh;
+    position: relative;
+    background-repeat: no-repeat !important;
+    background-position: top left !important;
+    background-size: cover !important;
+    z-index: 10;
+  }
+
+  .embeded-body::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1;
+  }
+
+  body {
+    height: 100%;
+  }
+
+  .body {
+    width: 100vw;
+    height: 100%;
+    position: relative;
+    z-index: 100;
+  }
+
+  .body,
+  html {
+    font:
+      14px/1 Ubuntu,
+      sans-serif;
+    height: 100%;
+    width: 100%;
+    -ms-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    display: flex;
+    flex-direction: column;
+    color: #000;
+  }
+
+  html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  @keyframes spinner {
+    0% {
+      transform: rotate(-3deg);
+    }
+
+    50% {
+      transform: rotate(3deg);
+    }
+
+    100% {
+      transform: rotate(-3deg);
+    }
+  }
+
+  @keyframes antispinner {
+    0% {
+      transform: rotate(3deg);
+    }
+
+    50% {
+      transform: rotate(-3deg);
+    }
+
+    100% {
+      transform: rotate(3deg);
+    }
+  }
+
+  .first-spin {
+    animation: 5s firstSpin ease;
+    animation-fill-mode: forwards;
+  }
+
+  .second-spin {
+    animation: 5s secondSpin ease;
+    animation-fill-mode: forwards;
+  }
+
+  @keyframes firstSpin {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(1350deg);
+    }
+  }
+
+  @keyframes secondSpin {
+    from {
+      transform: rotate(1350deg);
+    }
+
+    to {
+      transform: rotate(2970deg);
+    }
+  }
+
+  #banner .paragraph,
+  #banner p {
+    color: unset !important;
+    font-family: "Ubuntu", sans-serif;
+  }
+
+  .footer::after {
+    display: none;
+  }
+
+  .header::after {
+    display: none;
+  }
+
+  #weebly-footer-signup-container-v3 {
+    visibility: unset !important;
+    display: none !important;
+    height: unset !important;
+    position: unset !important;
+    bottom: 0px !important;
+    left: 0px;
+    right: 0px !important;
+    width: 100% !important;
+    z-index: -1 !important;
+    opacity: 0 !important;
+  }
+
+  #panel-one {
+    height: 0px !important;
+  }
+
+  #panel-two {
+    height: 100vh;
+
+    #banner {
+      height: 100%;
+    }
+  }
+
+  #wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .container {
+    padding: 0 !important;
+  }
+</style>
+<section class="body embeded-body" style="
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  ">
+  <header style="
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      z-index: 10;
+      width: 100%;
+      left: 0;
+      top: 0;
+    ">
+    <div class="logo">
+      <style>
+        .logo {
+          padding: 20px 0 0 0;
+          width: 25%;
+          max-width: 240px;
+          height: 170px;
+
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+        }
+
+        .wheel-text-wrapper {
+          width: 100%;
+          height: 100%;
+          padding-top: 5%;
+          display: flex;
+          align-items: center;
+          flex-direction: column;
+
+          p {
+            width: fit-content;
+            text-transform: uppercase;
+          }
+
+          p:not(last-child) {
+            margin-bottom: 6px;
+          }
+        }
+      </style><img src="https://alphaclick.click/system/loader.svg" alt="logo" />
+    </div>
+  </header>
+  <div class="main" style="
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: auto;
+    ">
+    <div class="wheel" style="
+        width: 100%;
+        height: auto;
+        background: url(&quot;https://alphaclick.click/wheel/steel-wheel-holder.avif&quot;)
+          no-repeat top left / contain;
+        aspect-ratio: 1 / 1;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+      <div class="wheel-body animate" style="
+          position: relative;
+          background: black;
+          width: 75%;
+          height: 75%;
+          border-radius: 50%;
+          overflow: hidden;
+        ">
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              +2
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              Spins
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 0 6px 0 !important">
+              Nochmal
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              300
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              FS
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 !important">
+              Leer
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              +2
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              Spins
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 !important">
+              Nochmal
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-big-text wheel-text" style="color: #fbd84d !important; margin: 0 0 6px 0 !important">
+              BIS ZU
+            </p>
+            <p class="wheel-small-text wheel-text" style="color: #fff !important; margin: 0 !important">
+              3.000€
+            </p>
+          </div>
+        </div>
+        <div class="wheel-seg">
+          <div class="wheel-text-wrapper adopt">
+            <p class="wheel-empty-text wheel-text" style="color: #7ccc33 !important; margin: 0 !important">
+              Leer
+            </p>
+          </div>
+        </div>
+        <style>
+          .wheel-text {
+            display: block;
+          }
+
+          .wheel-seg {
+            padding-top: 10px;
+            height: 51%;
+            width: 41.3%;
+            position: absolute;
+            -webkit-clip-path: polygon(100% 0, 50% 100%, 0 0);
+            clip-path: polygon(100% 0, 50% 100%, 0 0);
+            translate: -50% 0;
+            transform-origin: bottom;
+            text-align: center;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            left: 50%;
+          }
+
+          .wheel-seg:nth-child(odd) {
+            background: linear-gradient(0deg,
+                rgb(0, 169, 0) 23%,
+                rgb(0, 110, 0) 74%);
+          }
+
+          .wheel-seg:nth-child(even) {
+            background: linear-gradient(0deg,
+                rgb(0, 169, 0) 23%,
+                rgb(1, 87, 1) 74%);
+          }
+
+          .wheel-seg:nth-child(1) {
+            left: 50%;
+          }
+
+          .wheel-seg:nth-child(2) {
+            rotate: 45deg;
+          }
+
+          .wheel-seg:nth-child(3) {
+            rotate: 90deg;
+          }
+
+          .wheel-seg:nth-child(4) {
+            rotate: 135deg;
+          }
+
+          .wheel-seg:nth-child(5) {
+            rotate: 180deg;
+          }
+
+          .wheel-seg:nth-child(6) {
+            rotate: 225deg;
+          }
+
+          .wheel-seg:nth-child(7) {
+            rotate: 270deg;
+          }
+
+          .wheel-seg:nth-child(8) {
+            rotate: 315deg;
+          }
+        </style>
+      </div>
+      <button class="start" style="
+          position: absolute;
+          margin: auto;
+          top: 0;
+          bottom: 0;
+          right: 0;
+          left: 0;
+          background: url(&quot;https://alphaclick.click/wheel/trigger.avif&quot;)
+            no-repeat center/contain;
+          width: 25%;
+          height: 25%;
+          z-index: 10;
+          color: #612901;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-transform: uppercase;
+        ">
+        <p style="width: fit-content; padding: 0; margin:0; color: #612901;">Drehen</p>
+      </button>
+      <div class="frame">
+        <img src="https://alphaclick.click/wheel/wheel-win-frame.avif" alt="" />
+      </div>
+      <style>
+        .frame {
+          position: absolute;
+          z-index: 5;
+          top: -1%;
+          left: 50%;
+          translate: -50% 0;
+          height: 60%;
+
+          img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+        }
+
+        .popup {
+          position: fixed;
+          width: 100%;
+          height: 100%;
+          left: 0;
+          top: 0;
+          background: rgba(0, 0, 0, 0.4);
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: 0.2s ease;
+          opacity: 0;
+          pointer-events: none;
+
+          .popup-body {
+            background: url("https://alphaclick.click/wheel/bg-modal.avif") no-repeat center / cover;
+            border: 2px solid #fbd84d;
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+          }
+
+          .popup-btn {
+            width: 100%;
+            color: #612901;
+            border-bottom: 4px solid #7e5205;
+            background: rgb(224, 138, 13);
+            background: linear-gradient(180deg,
+                rgb(224, 138, 13) 0%,
+                rgb(255, 196, 70) 40%,
+                rgb(255, 196, 70) 60%,
+                rgb(224, 138, 13) 100%);
+            display: block;
+            border-radius: 16px;
+            font-size: 25px;
+            padding: 24px 33px;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-left: auto;
+            margin-right: auto;
+            overflow: hidden;
+            position: relative;
+            text-decoration: none;
+            text-align: center;
+          }
+
+          .popup-text {
+            color: #fff !important;
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 25px;
+            font-weight: 500;
+          }
+
+          .popup-text-value {
+            white-space: pre-line;
+          }
+        }
+
+        #second-popup {
+          .popup-text-prefix {
+            display: block;
+            margin-bottom: 10px;
+          }
+
+          .popup-text-value {
+            display: block;
+          }
+        }
+
+        .active-popup {
+          opacity: 1;
+          pointer-events: all;
+        }
+      </style>
+    </div>
+  </div>
+  <div class="offer" style="
+      padding: 15px;
+      border-radius: 15px;
+      background-color: rgba(0, 0, 0, 0.4);
+      position: relative;
+      z-index: 10;
+    ">
+    <h1 style="
+        color: #fbd84d !important;
+        text-align: center;
+        margin: 0 0 10px 0;
+        font-size: 30px;
+      ">
+      Drehe und gewinne!
+    </h1>
+    <p style="color: #fff !important; text-align: center; font-size: 22px">
+      Ihre Versuche: <span id="counter">2</span>
+    </p>
+  </div>
+  <div id="first-popup" class="popup">
+    <div class="popup-body">
+      <h2 class="popup-title" style="
+          color: #fbd84d !important;
+          text-align: center;
+          margin-bottom: 9px;
+          font-size: 30px;
+          margin-bottom: 20px;
+        ">
+        Dein Gewinn:
+      </h2>
+      <p class="popup-text">
+        <span class="popup-text-prefix"></span>
+        <span class="popup-text-value">300 FS</span>
+      </p>
+      <a href="#" id="secsp" class="popup-btn adopt">Nochmal</a>
+    </div>
+  </div>
+  <div id="second-popup" class="popup">
+    <div class="popup-body">
+      <h2 class="popup-title" style="
+          color: #fbd84d !important;
+          text-align: center;
+          margin-bottom: 9px;
+          font-size: 30px;
+          margin-bottom: 20px;
+        ">
+        Glückwunsch!
+      </h2>
+      <p class="popup-text">
+        <span class="popup-text-prefix">Dein Gewinn: 300 FS</span>
+        <span class="popup-text-value">+ BIS ZU 3.000€</span>
+      </p>
+      <a href="#" id="d25c38c9-c12e-670a-4afb-5b9f8d6045ee" class="popup-btn adopt">Bonus abholen</a>
+      <script>
+        document
+          .querySelector("#d25c38c9-c12e-670a-4afb-5b9f8d6045ee")
+          .addEventListener("click", function (e) {
+            e.preventDefault();
+            try {
+              sendConversions();
+            } catch (e) { }
+            window.location.href = CONFIG.offerURI;
+          });
+      </script>
+    </div>
+  </div>
+  <style>
+    .animate {
+      animation: 2s spinner ease-in-out infinite;
+    }
+
+    .wheel::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: -50% -50%;
+      display: block;
+      width: 75%;
+      height: 75%;
+      background: url("https://alphaclick.click/wheel/wheel-mask.avif") no-repeat center / contain;
+    }
+
+    @media (min-width: 500px) {
+      .wheel {
+        max-width: 700px;
+      }
+    }
+
+    .powered-by-badge {
+      display: none !important;
+    }
+  </style>
+  <script>
+    const startBtn = document.querySelector(".start");
+    const wheelBody = document.querySelector(".wheel-body");
+    const firstPopup = document.querySelector("#first-popup");
+    const secondPopup = document.querySelector("#second-popup");
+    const secsp = document.querySelector("#secsp");
+    let counter = document.querySelector("#counter");
+    const storageKey = `wheel-state:${CONFIG.lang}:${CONFIG.brand}`;
+
+    function readSavedState() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "null");
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveFinishedState() {
+      const prefixNode = secondPopup.querySelector(".popup-text-prefix");
+      const valueNode = secondPopup.querySelector(".popup-text-value");
+
+      try {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            finished: true,
+            bonus1: CONFIG.bonuses.first,
+            bonus2: CONFIG.bonuses.second,
+            popupPrefix: prefixNode ? prefixNode.textContent : "",
+            popupValue: valueNode ? valueNode.textContent : "",
+          }),
+        );
+      } catch (e) { }
+    }
+
+    function applySavedPopupText(state) {
+      const prefixNode = secondPopup.querySelector(".popup-text-prefix");
+      const valueNode = secondPopup.querySelector(".popup-text-value");
+
+      if (prefixNode && typeof state.popupPrefix === "string") {
+        prefixNode.textContent = state.popupPrefix;
+        prefixNode.hidden = !state.popupPrefix;
+      }
+
+      if (valueNode && typeof state.popupValue === "string") {
+        valueNode.textContent = state.popupValue;
+        valueNode.hidden = !state.popupValue;
+      }
+    }
+
+    function showSavedWinState() {
+      const state = readSavedState();
+      if (!state?.finished) return;
+
+      applySavedPopupText(state);
+      wheelBody.classList.remove("animate", "first-spin");
+      wheelBody.classList.add("second-spin");
+      firstPopup.classList.remove("active-popup");
+      secondPopup.classList.add("active-popup");
+      if (counter) counter.innerHTML = "0";
+      fitTexts().catch(() => { });
+    }
+
+    initPage().then(() => {
+      counter = document.querySelector("#counter");
+      showSavedWinState();
+    });
+    startBtn.addEventListener("click", function () {
+      if (readSavedState()?.finished) {
+        showSavedWinState();
+        return;
+      }
+
+      wheelBody.classList.remove("animate");
+      wheelBody.classList.add("first-spin");
+      if (counter) counter.innerHTML = "1";
+      setTimeout(function () {
+        firstPopup.classList.add("active-popup");
+      }, 6000);
+    });
+    secsp.addEventListener("click", function (e) {
+      e.preventDefault();
+      firstPopup.classList.remove("active-popup");
+      wheelBody.classList.add("second-spin");
+      if (counter) counter.innerHTML = "0";
+      setTimeout(function () {
+        saveFinishedState();
+        secondPopup.classList.add("active-popup");
+      }, 6000);
+    });
+  </script>
+</section>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Casinohotels in Nederland | Overnachten, Dineren &amp; Ontdekken</title>
+  <meta name="description" content="Ontdek bijzondere casinohotels en casinobestemmingen in Nederland, van Scheveningen tot Sassenheim en historisch Hoorn.">
+</head>
+<body>
+<h1>Casinohotels in Nederland voor een Bijzonder Verblijf</h1>
+<p>Een casino-uitje in Nederland kan veel meer zijn dan alleen een avond aan de speeltafels.</p>
+<p>Langs de kust en vlak bij enkele van de leukste steden van het land zijn er bestemmingen waar comfortabele hotels, restaurants, wellness en casino-entertainment moeiteloos samenkomen.</p>
+<p>Sommige locaties hebben het casino direct naast of in het hotel. Andere combineren een bekend casino met een bijzonder hotel in de directe omgeving.</p>
+<p>Wij selecteerden drie Nederlandse bestemmingen die ieder een heel eigen sfeer en ervaring bieden.</p>
+<h2>Holland Casino Scheveningen &amp; Grand Hotel Amrâth Kurhaus</h2>
+<h3>Scheveningen, Den Haag</h3>
+<h2>Een Casinoavond aan de Noordzee</h2>
+<p>Scheveningen is een ideale bestemming om een casinobezoek te combineren met een ontspannen verblijf aan zee.</p>
+<p>Holland Casino Scheveningen ligt aan de Kurhausweg, op korte afstand van het strand, de boulevard en het iconische Grand Hotel Amrâth Kurhaus.</p>
+<p>De ligging maakt de ervaring bijzonder veelzijdig.</p>
+<p>Overdag kun je genieten van de Noordzee, een wandeling maken over de boulevard of ontspannen op het strand. Daarna kun je uitgebreid dineren en de avond voortzetten bij Holland Casino.</p>
+<p>Voor een overnachting biedt Grand Hotel Amrâth Kurhaus een klassieke en stijlvolle setting. Het vijfsterrenhotel beschikt over 270 kamers en suites, een restaurant, wellnessfaciliteiten, een binnenzwembad, sauna en een groot terras aan de boulevard.</p>
+<p>Daardoor voelt een bezoek aan Scheveningen al snel als een complete stedentrip aan zee.</p>
+<p>De Pier, restaurants, het theater en andere attracties liggen allemaal op korte loopafstand.</p>
+<p>Holland Casino zelf biedt een brede casino-ervaring met speeltafels, automaten, horeca en entertainment in een levendige kustsetting.</p>
+<p>Waarom deze bestemming bijzonder is: Een casinoavond laat zich hier eenvoudig combineren met strand, restaurants en een verblijf aan zee.</p>
+<p>Ideaal voor: Stellen, weekendjes weg en bezoekers die Den Haag willen combineren met een avond in Scheveningen.</p>
+<h2>Jack’s Casino Sassenheim &amp; Van der Valk Hotel Sassenheim-Leiden</h2>
+<h3>Sassenheim, Zuid-Holland</h3>
+<h2>Een Complete Hotel- en Casino-ervaring</h2>
+<p>Sassenheim biedt een van de meest complete combinaties van hotel en casino in Nederland.</p>
+<p>Jack’s Casino ligt direct naast Van der Valk Hotel Sassenheim-Leiden en is verdeeld over meerdere verdiepingen. Dankzij de samenwerking tussen hotel en casino is deze locatie bijzonder geschikt voor bezoekers die na een avond uit niet meer hoeven te reizen.</p>
+<p>Een opvallend detail is de speciale Casino Suite , waarmee een verblijf hier net iets anders wordt dan een gewone hotelovernachting.</p>
+<p>In het casino vind je roulette, speelautomaten en diverse andere casino-opties in een ruime en moderne omgeving.</p>
+<p>Het hotel zelf beschikt over comfortabele kamers en meerdere restaurants, terwijl de ligging tussen Leiden en de kust volop mogelijkheden biedt voor de volgende dag.</p>
+<p>Je kunt bijvoorbeeld Leiden bezoeken, richting Noordwijk rijden of rustig ontbijten voordat je weer naar huis gaat.</p>
+<p>Waarom deze bestemming bijzonder is: Hotel en casino sluiten perfect op elkaar aan voor een compleet verblijf.</p>
+<p>Ideaal voor: Korte trips, stellen en bezoekers die op zoek zijn naar een gemakkelijk en comfortabel casino-arrangement.</p>
+<h2>Van der Valk Hotel Hoorn &amp; Jack’s Casino</h2>
+<h3>Hoorn, Noord-Holland</h3>
+<h2>Hotel, Casino en Bioscoop op Eén Locatie</h2>
+<p>In Hoorn krijgt een avondje uit een heel andere invulling.</p>
+<p>Van der Valk Hotel Hoorn combineert comfortabele hotelkamers met restaurants, een binnenzwembad, sauna, fitnessfaciliteiten, een Vue-bioscoop en Jack’s Casino.</p>
+<p>Dat maakt het mogelijk om een complete avond te plannen zonder steeds van locatie te hoeven wisselen.</p>
+<p>Begin met een diner, bezoek de bioscoop, ga daarna naar het casino en sluit de avond af in je hotelkamer — allemaal binnen hetzelfde complex.</p>
+<p>Jack’s Casino is direct vanuit het hotel bereikbaar en beschikt over een ruime casinovloer met onder meer roulette en verschillende speelautomaten.</p>
+<p>Ook buiten het hotel is er genoeg te ontdekken.</p>
+<p>Het historische centrum van Hoorn staat bekend om zijn oude haven, karakteristieke straten en sfeervolle ligging aan het water.</p>
+<p>Daardoor is deze bestemming niet alleen geschikt voor een avond uit, maar ook voor een compleet weekend in Noord-Holland.</p>
+<p>Waarom deze bestemming bijzonder is: Hotel, casino, bioscoop, restaurants en wellness bevinden zich allemaal op één locatie.</p>
+<p>Ideaal voor: Weekendjes weg, stellen en bezoekers die graag meerdere vormen van entertainment combineren.</p>
+<h2>Drie Verschillende Casino-uitjes in Nederland</h2>
+<p>Deze drie bestemmingen bieden elk een andere ervaring.</p>
+<p>Scheveningen is ideaal voor wie houdt van zee, strand en een klassiek hotel met veel sfeer.</p>
+<p>Sassenheim draait vooral om gemak, doordat hotel en casino direct met elkaar verbonden zijn en samen een complete overnachtingservaring bieden.</p>
+<p>Hoorn biedt juist een veelzijdige avond met hotel, restaurants, bioscoop en casino in één complex, gecombineerd met de charme van een historische stad.</p>
+<p>Welke bestemming het beste bij je past, hangt vooral af van wat je naast het casino wilt beleven.</p>
+<h2>Maak van Je Verblijf Meer dan Alleen een Casinoavond</h2>
+<p>Een casinohotel hoeft niet volledig in het teken te staan van het casino zelf.</p>
+<p>In Scheveningen kun je overdag naar het strand of langs de boulevard wandelen.</p>
+<p>Vanuit Sassenheim zijn Leiden en de kust gemakkelijk bereikbaar.</p>
+<p>In Hoorn kun je de volgende ochtend de historische binnenstad en haven ontdekken.</p>
+<p>Juist die combinatie maakt deze bestemmingen aantrekkelijk: het casino wordt onderdeel van het weekend, maar bepaalt niet het hele verblijf.</p>
+<h2>Plan Jouw Casinohotelverblijf in Nederland</h2>
+<p>Begin bij de bestemming en kijk daarna pas naar het casino.</p>
+<p>Wil je wakker worden vlak bij de Noordzee, liever in de buurt van Leiden verblijven of een historisch weekend in Noord-Holland plannen?</p>
+<p>Vergelijk vervolgens de kamers, restaurants, wellnessfaciliteiten en het entertainmentaanbod.</p>
+<p>Voor een klassiek verblijf aan zee is Scheveningen een uitstekende keuze.</p>
+<p>Sassenheim is bijzonder geschikt als je hotel en casino het liefst direct naast elkaar hebt.</p>
+<p>Hoorn biedt juist veel variatie voor bezoekers die meerdere activiteiten op één locatie willen combineren.</p>
+<p>Welke bestemming je ook kiest, plan genoeg tijd in om ook de omgeving te ontdekken.</p>
+<h2>Verantwoord Spelen</h2>
+<p>Casino-entertainment is uitsluitend bedoeld voor volwassenen die aan de geldende toegangsvoorwaarden voldoen.</p>
+<p>Bepaal vooraf hoeveel tijd en geld je wilt besteden en speel alleen met een bedrag dat je kunt missen.</p>
+<p>Probeer verliezen niet terug te winnen door langer door te spelen en beschouw casino-entertainment altijd als ontspanning, niet als een manier om geld te verdienen.</p>
+<p>Casino’s kunnen eigen toegangs-, leeftijds- en identificatievoorwaarden hanteren. Controleer daarom altijd vooraf de actuele regels van de betreffende locatie.</p>
+<p>Als spelen niet meer ontspannen of plezierig voelt, neem dan een pauze en zoek indien nodig passende ondersteuning.</p>
+<h2>Redactionele Disclaimer</h2>
+<p>Deze gids is bedoeld voor algemene informatie en reisplanning.</p>
+<p>Hotelfaciliteiten, casino-aanbod, restaurants, openingstijden en andere diensten kunnen in de loop van de tijd veranderen.</p>
+<p>Controleer daarom altijd de actuele informatie rechtstreeks bij het hotel of casino voordat je een verblijf boekt of je bezoek plant.</p>
+</body>
+</html>s
