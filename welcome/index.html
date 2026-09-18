@@ -1275,5 +1275,86 @@
 <p>Deze gids is bedoeld voor algemene informatie en reisplanning.</p>
 <p>Hotelfaciliteiten, casino-aanbod, restaurants, openingstijden en andere diensten kunnen in de loop van de tijd veranderen.</p>
 <p>Controleer daarom altijd de actuele informatie rechtstreeks bij het hotel of casino voordat je een verblijf boekt of je bezoek plant.</p>
+
+
+<!-- Render / iframe independent scrolling fix -->
+<style id="render-scroll-fix">
+  html,
+  body {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #page-scroll-root {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: auto;
+    touch-action: pan-y;
+    z-index: 1;
+  }
+
+  /* The wheel remains the first full screen, but does not own page scrolling. */
+  #page-scroll-root > section.body.embeded-body {
+    width: 100% !important;
+    min-height: 100vh !important;
+    min-height: 100dvh !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    flex: 0 0 auto !important;
+    overflow: hidden !important;
+  }
+
+  /* The wheel logo/header must scroll away with the wheel instead of staying over the white page. */
+  #page-scroll-root > section.body.embeded-body > header {
+    position: absolute !important;
+  }
+
+  /* Prevent the generic wheel CSS from forcing later content to viewport height. */
+  #page-scroll-root > section:not(.body) {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+</style>
+<script id="render-scroll-fix-script">
+(function () {
+  function installScrollableRoot() {
+    if (document.getElementById('page-scroll-root')) return;
+
+    var wheel = document.querySelector('section.body.embeded-body');
+    if (!wheel || !wheel.parentNode) return;
+
+    var root = document.createElement('div');
+    root.id = 'page-scroll-root';
+    wheel.parentNode.insertBefore(root, wheel);
+
+    /* Move the wheel and every page node that follows it into one independent scroller. */
+    var node = wheel;
+    while (node) {
+      var next = node.nextSibling;
+      if (node !== root) root.appendChild(node);
+      node = next;
+    }
+
+    /* Ensure both mouse-wheel and touch scrolling start at the top. */
+    root.scrollTop = 0;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installScrollableRoot, { once: true });
+  } else {
+    installScrollableRoot();
+  }
+})();
+</script>
 </body>
-</html>s
+</html>
